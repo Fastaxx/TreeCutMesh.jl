@@ -245,7 +245,6 @@ function are_neighbors(cell1, cell2)
     return cell1.north == cell2 || cell1.south == cell2 || 
            cell1.east == cell2 || cell1.west == cell2
 end
-
 """
     balance_quadtree!(root, max_level, min_cell_size)
 
@@ -260,21 +259,62 @@ function balance_quadtree!(root, max_level, min_cell_size)
         leaves = get_leaf_cells(root)
         cells_to_refine = ThreadedQuadTreeCell[]
         
-        # Traverse leaves to identify those that need refinement
-        # O(N) because neighbor access is direct
+        # Check all leaf cells against their neighbors
         for leaf in leaves
             # Check all 4 directions
             neighbors = [leaf.north, leaf.south, leaf.east, leaf.west]
             for neighbor in neighbors
-                if !isnothing(neighbor) && neighbor.level > leaf.level + 1
-                    push!(cells_to_refine, leaf)
-                    changes_made = true
-                    break
+                if !isnothing(neighbor)
+                    # Case 1: Neighbor is a leaf node
+                    if neighbor.is_leaf
+                        # Check for difference > 1 in either direction
+                        if abs(leaf.level - neighbor.level) > 1
+                            # Refine the one with lower level
+                            if leaf.level < neighbor.level
+                                # Current leaf needs refinement
+                                if leaf.level < max_level && leaf.width > min_cell_size && leaf.height > min_cell_size
+                                    push!(cells_to_refine, leaf)
+                                    changes_made = true
+                                    break  # No need to check other neighbors of this leaf
+                                end
+                            else
+                                # Neighbor needs refinement
+                                if neighbor.level < max_level && neighbor.width > min_cell_size && 
+                                   neighbor.height > min_cell_size
+                                    push!(cells_to_refine, neighbor)
+                                    changes_made = true
+                                end
+                            end
+                        end
+                    else
+                        # Case 2: Neighbor is not a leaf - check its children that border this cell
+                        for child in neighbor.children
+                            # Only check children that are adjacent to the current leaf
+                            if are_adjacent(leaf, child)
+                                if child.is_leaf && abs(leaf.level - child.level) > 1
+                                    if leaf.level < child.level
+                                        # Current leaf needs refinement
+                                        if leaf.level < max_level && leaf.width > min_cell_size && 
+                                           leaf.height > min_cell_size
+                                            push!(cells_to_refine, leaf)
+                                            changes_made = true
+                                            break  # No need to check other children
+                                        end
+                                    end
+                                    # We don't need to handle the case where the child needs refinement,
+                                    # as we'll catch that in a later iteration
+                                end
+                            end
+                        end
+                        if changes_made
+                            break  # No need to check other neighbors of this leaf
+                        end
+                    end
                 end
             end
         end
         
-        # Refine identified cells
+        # Refine identified cells 
         for cell in cells_to_refine
             if cell.is_leaf && cell.level < max_level && 
                cell.width > min_cell_size && cell.height > min_cell_size
@@ -303,6 +343,31 @@ function balance_quadtree!(root, max_level, min_cell_size)
     end
     
     return root
+end
+
+"""
+    are_adjacent(cell1, cell2)
+
+Helper function to determine if two cells share a boundary.
+"""
+function are_adjacent(cell1, cell2)
+    # Check if cells touch on north-south boundary
+    ns_adjacent = (abs(cell1.y_min + cell1.height - cell2.y_min) < 1e-10) || 
+                 (abs(cell2.y_min + cell2.height - cell1.y_min) < 1e-10)
+                 
+    # Check if cells overlap in x direction when adjacent in y
+    ns_overlap = (cell1.x_min < cell2.x_min + cell2.width) && 
+                (cell2.x_min < cell1.x_min + cell1.width)
+    
+    # Check if cells touch on east-west boundary
+    ew_adjacent = (abs(cell1.x_min + cell1.width - cell2.x_min) < 1e-10) || 
+                 (abs(cell2.x_min + cell2.width - cell1.x_min) < 1e-10)
+                 
+    # Check if cells overlap in y direction when adjacent in x
+    ew_overlap = (cell1.y_min < cell2.y_min + cell2.height) && 
+                (cell2.y_min < cell1.y_min + cell1.height)
+    
+    return (ns_adjacent && ns_overlap) || (ew_adjacent && ew_overlap)
 end
 
 """

@@ -55,10 +55,7 @@ using LinearAlgebra
         # Test full tree building
         circle_level_set = (x, y) -> level_set_circle(x, y, 0.5, 0.5, 0.25)
         tree = build_constrained_quadtree(0.0, 0.0, 1.0, 1.0, circle_level_set, max_level=3)
-        
-        # Add balancing step if not already included in build_constrained_quadtree
-        #balance_quadtree!(tree, circle_level_set)
-        
+
         leaves = get_leaf_cells(tree)
         
         # Test some basic properties
